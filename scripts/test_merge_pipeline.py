@@ -93,6 +93,33 @@ def main() -> None:
         r = run_build(["--status", "--meta", "meta.json"], td)
         assert "last_data_date: 2026-06-03" in r.stdout
 
+    with tempfile.TemporaryDirectory() as tmp2:
+        td2 = Path(tmp2)
+        payload = sample_payload(["2026-06-10"], 7)
+        jsonl_path = td2 / "payload.jsonl"
+        jsonl_path.write_text(
+            json.dumps({"payload": json.dumps(payload)}) + "\n"
+        )
+        r = run_build(
+            [
+                "--init",
+                "--from-bq",
+                str(jsonl_path),
+                "--output",
+                "data.json",
+                "--meta",
+                "meta.json",
+                "--facts",
+                "facts.json",
+            ],
+            td2,
+        )
+        if r.returncode != 0:
+            print(r.stderr or r.stdout)
+            raise SystemExit("jsonl init failed")
+        meta = json.loads((td2 / "meta.json").read_text())
+        assert meta["last_data_date"] == "2026-06-10"
+
     print("Pipeline tests passed.")
 
 

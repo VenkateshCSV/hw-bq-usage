@@ -28,15 +28,17 @@ Shows `last_data_date`, window range, and last merge summary.
 
 ## First load (40-day bootstrap)
 
-1. Run your BQ export (aggregated, no query text) → save as `exports/payload.json`
-   - Or use reference `sql/export_aggregated.sql` in the BQ console; download the single `payload` cell as JSON/CSV.
-2. Build:
+**If your export is aggregated** (one `payload` blob with `daily` / `hourly` / `top_jobs`):
 
-   ```bash
-   python build.py --init --from-bq exports/payload.json
-   ```
+1. Run `sql/export_aggregated.sql` in BQ → save as `exports/payload.jsonl`
+2. `python build.py --init --from-bq exports/payload.jsonl`
 
-3. Commit `facts.json`, `data.json`, `meta.json`.
+**If your export is job-level JSONL** (one row per query: `job_id`, `gb_scanned`, … — like a slim CSV):
+
+1. Save BQ results as `exports/payload.json` (JSONL is fine)
+2. `python build.py --init --from-jobs exports/payload.json`
+
+Both paths write `facts.json`, `data.json`, and `meta.json`.
 
 ## Incremental refresh (every few days)
 

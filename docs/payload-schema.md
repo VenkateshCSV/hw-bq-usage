@@ -67,7 +67,23 @@ The dashboard build consumes **pre-aggregated JSON** from your BigQuery export. 
 `build.py --from-bq` accepts:
 
 1. **Plain JSON** — the object above saved as `exports/payload.json`
-2. **BQ one-row export** — JSON with a `payload` string field, or CSV whose first cell is the JSON string
+2. **JSONL / NDJSON** — `.jsonl` or `.ndjson` (typical BQ “Save results” format):
+   - One line with the full payload object, or
+   - One line with a `payload` column: `{"payload": "{...}"}` or `{"payload": {...}}`
+   - A `.json` file that contains one JSON object per line is also accepted
+3. **BQ one-row CSV** — first cell is the JSON string
+
+Example BQ JSONL (single line):
+
+```json
+{"payload":"{\"window_start\":\"2026-05-14\",\"daily\":[...],\"hourly\":[...],\"top_jobs\":[...]}"}
+```
+
+Usage is unchanged — point `--from-bq` at your file:
+
+```bash
+python build.py --init --from-bq exports/payload.jsonl
+```
 
 ## Merge semantics
 

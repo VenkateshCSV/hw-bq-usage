@@ -165,11 +165,114 @@ def save_facts(path: Path, facts: dict) -> None:
     path.write_text(json.dumps(facts, indent=2) + "\n")
 
 
+JSONL_SUFFIXES = {".jsonl", ".ndjson"}
+
+
+def read_jsonl_records(path: Path) -> list[dict]:
+    records: list[dict] = []
+    for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            raise SystemExit(f"Invalid JSON on line {i} of {path}: {exc}") from exc
+    if not records:
+        raise SystemExit(f"Empty JSONL payload: {path}")
+    return records
+
+
+def unwrap_payload_record(record: dict) -> dict:
+    if "payload" not in record:
+        return record
+    payload = record["payload"]
+    if isinstance(payload, str):
+        return json.loads(payload)
+    if isinstance(payload, dict):
+        return payload
+    raise SystemExit("Payload field must be a JSON object or JSON string")
+
+
+JOB_LEVEL_HINT = """
+This file is a job-level export (one row per query: job_id, gb_scanned, …),
+not an aggregated payload (daily / hourly / top_jobs arrays).
+
+For your current file, run:
+  python build.py --init --from-jobs exports/payload.json
+
+For a small aggregated export (~100–500 KB), run sql/export_aggregated.sql
+in BigQuery and use:
+  python build.py --init --from-bq exports/payload.jsonl
+"""
+
+
+def is_job_level_record(record: dict) -> bool:
+    return (
+        "job_id" in record
+        and ("gb_scanned" in record or "gb" in record)
+        and "daily" not in record
+        and "person" not in record
+    )
+
+
+def merge_payload_records(records: list[dict]) -> dict:
+    if len(records) == 1:
+        record = records[0]
+        if is_job_level_record(record):
+            raise SystemExit(JOB_LEVEL_HINT.strip())
+        return unwrap_payload_record(record)
+
+    merged: dict = {"daily": [], "hourly": [], "top_jobs": [], "unmapped": []}
+    window_starts: list[str] = []
+    window_ends: list[str] = []
+    job_level_lines = 0
+
+    for record in records:
+        if "payload" in record or "daily" in record:
+            obj = unwrap_payload_record(record)
+            window_starts.extend([obj["window_start"]] if obj.get("window_start") else [])
+            window_ends.extend([obj["window_end"]] if obj.get("window_end") else [])
+            merged["daily"].extend(obj.get("daily", []))
+            merged["hourly"].extend(obj.get("hourly", []))
+            merged["top_jobs"].extend(obj.get("top_jobs", []))
+            merged["unmapped"].extend(obj.get("unmapped", []))
+            continue
+
+        if is_job_level_record(record):
+            job_level_lines += 1
+            continue
+
+        if "job_id" in record:
+            merged["top_jobs"].append(record)
+        elif "hour" in record and "person" in record and "date" in record:
+            merged["hourly"].append(record)
+        elif "source" in record and "person" in record and "date" in record:
+            merged["daily"].append(record)
+        elif "key" in record and "count" in record:
+            merged["unmapped"].append(record)
+        else:
+            raise SystemExit(
+                "Unrecognized JSONL line — expected payload object, daily, hourly, or top_jobs row"
+            )
+
+    if job_level_lines and not merged["daily"]:
+        raise SystemExit(JOB_LEVEL_HINT.strip())
+
+    if window_starts:
+        merged["window_start"] = min(window_starts)
+    if window_ends:
+        merged["window_end"] = max(window_ends)
+    return merged
+
+
 def load_payload(path: Path) -> dict:
     if not path.exists():
         raise SystemExit(f"Payload not found: {path}")
 
-    if path.suffix.lower() == ".csv":
+    suffix = path.suffix.lower()
+
+    if suffix == ".csv":
         with path.open(newline="", encoding="utf-8") as fh:
             row = next(csv.reader(fh), None)
             if not row:
@@ -179,16 +282,26 @@ def load_payload(path: Path) -> dict:
             data = json.loads(raw)
         else:
             raise SystemExit("CSV payload first cell must be a JSON object or payload string")
+    elif suffix in JSONL_SUFFIXES:
+        data = merge_payload_records(read_jsonl_records(path))
     else:
-        data = json.loads(path.read_text())
+        text = path.read_text(encoding="utf-8")
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            data = merge_payload_records(read_jsonl_records(path))
 
     if isinstance(data, str):
         data = json.loads(data)
 
     if "payload" in data and isinstance(data["payload"], str):
         data = json.loads(data["payload"])
+    elif "payload" in data and isinstance(data["payload"], dict):
+        data = data["payload"]
 
     if "daily" not in data:
+        if data.get("top_jobs") and is_job_level_record(data["top_jobs"][0]):
+            raise SystemExit(JOB_LEVEL_HINT.strip())
         raise SystemExit("Payload missing required field: daily")
 
     for forbidden in ("query", "qtext"):
@@ -445,6 +558,109 @@ def run_from_facts_pipeline(
     return data, meta, warnings
 
 
+def load_jobs_jsonl(path: Path) -> pd.DataFrame:
+    suffix = path.suffix.lower()
+    if suffix in JSONL_SUFFIXES or suffix == ".json":
+        df = pd.read_json(path, lines=True, dtype=str)
+    else:
+        raise SystemExit(f"Job export must be .json or .jsonl (JSONL), got: {path.suffix}")
+    if "job_id" not in df.columns and "job_id" in [c.lower() for c in df.columns]:
+        pass
+    df.columns = [c.strip().lower() for c in df.columns]
+    if "job_id" not in df.columns:
+        raise SystemExit("Job export missing column: job_id")
+    if "gb_scanned" not in df.columns:
+        raise SystemExit("Job export missing column: gb_scanned")
+    return prepare_jobs_frame(df)
+
+
+def aggregate_jobs_to_facts(
+    df: pd.DataFrame,
+    config_dir: Path,
+    top_n: int | None = DEFAULT_TOP_N,
+) -> tuple[dict, list[dict]]:
+    idmap, sa_names, _ = load_config(config_dir)
+    aliases = idmap["aliases"]
+    emails = {k.lower(): v for k, v in idmap["emails"].items()}
+
+    daily_acc: dict[tuple[str, str, int], dict] = defaultdict(lambda: {"gb": 0.0, "q": 0})
+    hourly_acc: dict[tuple[str, str, int], float] = defaultdict(float)
+    unmapped: Counter[str] = Counter()
+    top_candidates: list[dict] = []
+
+    for row in df.itertuples(index=False):
+        qrb = getattr(row, "query_requested_by", "") or ""
+        user_email = getattr(row, "user_email", "") or ""
+        job_id = getattr(row, "job_id", "") or ""
+        gb = float(getattr(row, "gb_scanned", 0) or 0)
+        day = pd.Timestamp(getattr(row, "date_parsed")).normalize()
+        date_str = day.strftime("%Y-%m-%d")
+        time_val = getattr(row, "time", "")
+
+        person = resolve_person(qrb, user_email, aliases, emails, sa_names)
+        if not person:
+            unmapped[qrb or "(empty)"] += 1
+            continue
+
+        src = classify_source(qrb)
+        daily_key = (date_str, person, src)
+        daily_acc[daily_key]["gb"] += gb
+        daily_acc[daily_key]["q"] += 1
+
+        hour = parse_hour(time_val)
+        if hour is not None:
+            hourly_acc[(date_str, person, hour)] += gb
+
+        top_candidates.append(
+            {
+                "job_id": job_id,
+                "date": date_str,
+                "person": person,
+                "src": SRC_LABELS[src],
+                "gb": round(gb, 2),
+            }
+        )
+
+    daily = [
+        {
+            "date": d,
+            "person": p,
+            "source": s,
+            "gb": round(v["gb"], 2),
+            "q": int(v["q"]),
+        }
+        for (d, p, s), v in daily_acc.items()
+    ]
+    hourly = [
+        {"date": d, "person": p, "hour": h, "gb": round(gb, 2)}
+        for (d, p, h), gb in hourly_acc.items()
+    ]
+    top_candidates.sort(key=lambda x: x["gb"], reverse=True)
+    top_jobs = top_candidates if top_n is None else top_candidates[:top_n]
+    facts = {
+        "version": FACTS_VERSION,
+        "daily": daily,
+        "hourly": hourly,
+        "top_jobs": top_jobs,
+    }
+    unmapped_out = [{"key": k, "count": v} for k, v in unmapped.most_common(10)]
+    return facts, unmapped_out
+
+
+def facts_as_payload(facts: dict, unmapped: list[dict]) -> dict:
+    dates = dates_in_facts(facts)
+    payload: dict = {
+        "daily": facts.get("daily", []),
+        "hourly": facts.get("hourly", []),
+        "top_jobs": facts.get("top_jobs", []),
+        "unmapped": unmapped,
+    }
+    if dates:
+        payload["window_start"] = min(dates)
+        payload["window_end"] = max(dates)
+    return payload
+
+
 def build_data_from_csv(
     csv_path: Path,
     config_dir: Path,
@@ -655,7 +871,12 @@ def main() -> None:
     parser.add_argument("--status", action="store_true", help="Show last data date and window")
     parser.add_argument("--init", action="store_true", help="Replace facts with payload (bootstrap)")
     parser.add_argument("--merge", action="store_true", help="Merge payload into existing facts")
-    parser.add_argument("--from-bq", type=Path, help="Aggregated BQ payload (.json or .csv)")
+    parser.add_argument("--from-bq", type=Path, help="Aggregated BQ payload (.json / .jsonl)")
+    parser.add_argument(
+        "--from-jobs",
+        type=Path,
+        help="Job-level JSONL export (job_id, gb_scanned per line — your current export format)",
+    )
     parser.add_argument("--csv", type=Path, help="Legacy job-level CSV export (debug)")
     parser.add_argument("--days", type=int, default=40, help="Rolling window for --csv (default: 40)")
     parser.add_argument("--output", type=Path, default=Path("data.json"))
@@ -699,6 +920,42 @@ def main() -> None:
         data, meta, warnings = run_from_facts_pipeline(
             facts, payload, args.from_bq, merge_info, args.config, args.top_n
         )
+        write_outputs(data, meta, warnings, args.output, args.meta, facts, args.facts)
+        return
+
+    if args.from_jobs:
+        if not (args.init or args.merge):
+            raise SystemExit("With --from-jobs, specify --init (first load) or --merge (incremental)")
+        df = load_jobs_jsonl(args.from_jobs)
+
+        if args.init:
+            batch_facts, unmapped = aggregate_jobs_to_facts(df, args.config, args.top_n)
+            facts = batch_facts
+            payload = facts_as_payload(batch_facts, unmapped)
+            merge_info = {
+                "payload_file": args.from_jobs.name,
+                "dates_added": sorted(dates_in_payload(payload)),
+                "dates_overwritten": [],
+                "dates_in_payload": sorted(dates_in_payload(payload)),
+            }
+        else:
+            facts = load_facts(args.facts)
+            batch_facts, unmapped = aggregate_jobs_to_facts(df, args.config, top_n=None)
+            payload = facts_as_payload(batch_facts, unmapped)
+            facts, dates_added, dates_overwritten, dates_in_payload_list = merge_facts(
+                facts, payload, args.top_n
+            )
+            merge_info = {
+                "payload_file": args.from_jobs.name,
+                "dates_added": dates_added,
+                "dates_overwritten": dates_overwritten,
+                "dates_in_payload": dates_in_payload_list,
+            }
+
+        data, meta, warnings = run_from_facts_pipeline(
+            facts, payload, args.from_jobs, merge_info, args.config, args.top_n
+        )
+        meta["source"] = "job_jsonl"
         write_outputs(data, meta, warnings, args.output, args.meta, facts, args.facts)
         return
 
