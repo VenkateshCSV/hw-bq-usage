@@ -4,7 +4,7 @@ BigQuery query scan volume dashboard for Hitwicket analysts. Static site (GitHub
 
 ## Live dashboard
 
-Host `index.html`, `data.json`, and `meta.json` from the repo root on GitHub Pages.
+Host `index.html`, `data.json`, `meta.json`, and `facts.json` from the repo root on GitHub Pages (`facts.json` is optional for the UI but needed for incremental rebuilds).
 
 ## What's included
 
@@ -12,36 +12,33 @@ Host `index.html`, `data.json`, and `meta.json` from the repo root on GitHub Pag
 |------|---------|
 | [index.html](index.html) | Dashboard UI (Chart.js) |
 | [data.json](data.json) | Aggregated usage data (generated) |
-| [meta.json](meta.json) | Build metadata: window, row count, anomalies |
-| [build.py](build.py) | CSV → JSON build script |
+| [facts.json](facts.json) | Merge store for incremental updates (generated) |
+| [meta.json](meta.json) | Build metadata: window, last data date, merge summary |
+| [build.py](build.py) | Payload/CSV → JSON build script |
 | [config/](config/) | Identity maps and GCP project settings |
-| [sql/export_jobs.sql](sql/export_jobs.sql) | BigQuery export query |
-
-## Metrics
-
-- TB scanned and estimated cost ($6.25/TB default)
-- Daily usage by source (Looker, console, script, SA-cron)
-- Analyst leaderboard, Pareto chart, drill-down, compare
-- Hour-of-day heatmap and day-of-week chart
-- Top 25 heaviest queries (with BigQuery console links)
+| [docs/payload-schema.md](docs/payload-schema.md) | BQ payload contract (no query text) |
+| [sql/export_aggregated.sql](sql/export_aggregated.sql) | Reference: 40-day bootstrap export |
 
 ## Refresh data
 
-See [docs/refresh.md](docs/refresh.md) for the daily manual workflow:
-
 ```bash
 pip install -r requirements.txt
-python build.py --csv exports/your-export.csv --days 90
-git add data.json meta.json && git commit -m "Refresh BQ usage data" && git push
+python build.py --status                              # last data date
+python build.py --init --from-bq exports/payload.json # first 40-day load
+python build.py --merge --from-bq exports/new.json    # incremental
 ```
+
+See [docs/refresh.md](docs/refresh.md) for the full workflow.
+
+Expected payload size: **~100–500 KB** per export (vs ~179 MB job-level CSV with query text).
 
 ## Identity mapping
 
-Analysts are resolved from `query_requested_by` and `user_email` via [config/idmap.json](config/idmap.json). Service account buckets are in [config/sa_names.json](config/sa_names.json). The build script warns about unmapped values on each run.
+Analysts are resolved in your BQ export using the same rules as [config/idmap.json](config/idmap.json). Reference SQL is regenerated via `python scripts/render_idmap_sql.py`.
 
 ## Automation (Phase 2)
 
-[.github/workflows/refresh-dashboard.yml](.github/workflows/refresh-dashboard.yml) is prepared for scheduled refresh once `GCP_SA_KEY` and `GCP_PROJECT_ID` repository secrets are added.
+[.github/workflows/refresh-dashboard.yml](.github/workflows/refresh-dashboard.yml) is prepared for scheduled refresh once GCP credentials are added.
 
 ## Context
 

@@ -638,8 +638,18 @@ function renderAll(rebuildCompare=true){
 function updateMetaBadge(){
   const el=document.getElementById('updatedBadge');
   if(!el||!META) return;
-  const gen=META.generated_at?new Date(META.generated_at).toLocaleString():'';
-  el.textContent=gen?`Data as of ${gen}`:'';
+  const through=META.last_data_date||META.window_end;
+  const refreshed=META.last_refresh_at||META.generated_at;
+  const parts=[];
+  if(through){
+    const d=new Date(through+'T12:00:00');
+    parts.push('Data through '+d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}));
+  }
+  if(refreshed){
+    const r=new Date(refreshed);
+    parts.push('Refreshed '+r.toLocaleDateString(undefined,{month:'short',day:'numeric'}));
+  }
+  el.textContent=parts.join(' · ');
 }
 
 function init(){

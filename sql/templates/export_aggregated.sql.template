@@ -1,0 +1,142 @@
+-- Reference template: 40-day bootstrap aggregated payload (no query text).
+-- Regenerate: python scripts/render_idmap_sql.py
+
+DECLARE end_date DATE DEFAULT CURRENT_DATE('Asia/Kolkata');
+DECLARE start_date DATE DEFAULT DATE_SUB(end_date, INTERVAL 39 DAY);
+
+WITH
+{{IDMAP_LOOKUP}},
+
+jobs AS (
+  SELECT
+    job_id,
+    user_email,
+    COALESCE(
+      (SELECT value FROM UNNEST(labels) WHERE key = 'requestor'),
+      (SELECT value FROM UNNEST(labels) WHERE key = 'queried_by'),
+      user_email
+    ) AS query_requested_by,
+    DATE(creation_time, 'Asia/Kolkata') AS date,
+    EXTRACT(HOUR FROM TIME(creation_time, 'Asia/Kolkata')) AS hour,
+    ROUND(total_bytes_processed / POW(1024, 3), 2) AS gb
+  FROM
+    `region-us`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
+  WHERE
+    DATE(creation_time, 'Asia/Kolkata') BETWEEN start_date AND end_date
+    AND job_type = 'QUERY'
+    AND state = 'DONE'
+    AND total_bytes_processed > 0
+),
+
+resolved AS (
+  SELECT
+    j.*,
+    COALESCE(
+      (SELECT person FROM sa_map WHERE email = j.query_requested_by LIMIT 1),
+      IF(
+        j.query_requested_by = 'looker_studio',
+        (SELECT person FROM email_map WHERE LOWER(email) = LOWER(j.user_email) LIMIT 1),
+        NULL
+      ),
+      IF(
+        CONTAINS_SUBSTR(j.query_requested_by, 'gserviceaccount.com'),
+        COALESCE(
+          (SELECT person FROM sa_map WHERE email = j.query_requested_by LIMIT 1),
+          CONCAT('SA: ', SPLIT(j.query_requested_by, '@')[SAFE_OFFSET(0)])
+        ),
+        NULL
+      ),
+      IF(
+        CONTAINS_SUBSTR(j.query_requested_by, '@hitwicket.com'),
+        (SELECT person FROM email_map WHERE LOWER(email) = LOWER(j.query_requested_by) LIMIT 1),
+        NULL
+      ),
+      (SELECT person FROM alias_map WHERE LOWER(alias) = LOWER(j.query_requested_by) LIMIT 1),
+      (SELECT person FROM email_map WHERE LOWER(email) = LOWER(j.user_email) LIMIT 1)
+    ) AS person,
+    CASE
+      WHEN j.query_requested_by = 'looker_studio' THEN 0
+      WHEN CONTAINS_SUBSTR(j.query_requested_by, '@hitwicket.com') THEN 1
+      WHEN CONTAINS_SUBSTR(j.query_requested_by, 'gserviceaccount.com') THEN 3
+      ELSE 2
+    END AS source_idx,
+    CASE
+      WHEN j.query_requested_by = 'looker_studio' THEN 'Looker'
+      WHEN CONTAINS_SUBSTR(j.query_requested_by, '@hitwicket.com') THEN 'Console'
+      WHEN CONTAINS_SUBSTR(j.query_requested_by, 'gserviceaccount.com') THEN 'SA-Cron'
+      ELSE 'Script'
+    END AS src_label
+  FROM
+    jobs AS j
+),
+
+mapped AS (
+  SELECT * FROM resolved WHERE person IS NOT NULL
+),
+
+unmapped AS (
+  SELECT
+    query_requested_by AS key,
+    COUNT(*) AS count
+  FROM
+    resolved
+  WHERE
+    person IS NULL
+  GROUP BY
+    1
+),
+
+daily AS (
+  SELECT
+    CAST(date AS STRING) AS date,
+    person,
+    source_idx AS source,
+    ROUND(SUM(gb), 2) AS gb,
+    COUNT(*) AS q
+  FROM
+    mapped
+  GROUP BY
+    1, 2, 3
+),
+
+hourly AS (
+  SELECT
+    CAST(date AS STRING) AS date,
+    person,
+    hour,
+    ROUND(SUM(gb), 2) AS gb
+  FROM
+    mapped
+  GROUP BY
+    1, 2, 3
+),
+
+ranked_jobs AS (
+  SELECT
+    job_id,
+    CAST(date AS STRING) AS date,
+    person,
+    src_label AS src,
+    gb,
+    ROW_NUMBER() OVER (ORDER BY gb DESC) AS rn
+  FROM
+    mapped
+),
+
+top_jobs AS (
+  SELECT job_id, date, person, src, gb FROM ranked_jobs WHERE rn <= 100
+)
+
+SELECT
+  TO_JSON_STRING(
+    STRUCT(
+      CAST(start_date AS STRING) AS window_start,
+      CAST(end_date AS STRING) AS window_end,
+      (SELECT ARRAY_AGG(STRUCT(date, person, source, gb, q)) FROM daily) AS daily,
+      (SELECT ARRAY_AGG(STRUCT(date, person, hour, gb)) FROM hourly) AS hourly,
+      (SELECT ARRAY_AGG(STRUCT(job_id, date, person, src, gb)) FROM top_jobs) AS top_jobs,
+      (SELECT ARRAY_AGG(STRUCT(key, count)) FROM unmapped) AS unmapped
+    )
+  ) AS payload
+FROM
+  (SELECT 1);

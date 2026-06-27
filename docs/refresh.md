@@ -1,71 +1,81 @@
-# Daily dashboard refresh (manual)
+# Daily dashboard refresh
 
-Phase 1 workflow until GitHub Actions credentials are configured.
+Primary workflow: **aggregated BQ payload** (no query text, ~100–500 KB). See [payload-schema.md](payload-schema.md).
+
+Legacy job-level CSV (`sql/export_jobs.sql`) is deprecated debug-only.
 
 ## Prerequisites
 
 - Python 3.10+
 - `pip install -r requirements.txt`
-- BigQuery access to export from `INFORMATION_SCHEMA.JOBS`
+- Your BQ export producing a payload matching [payload-schema.md](payload-schema.md)
 
-## Steps
+Optional reference SQL (regenerate after idmap edits):
 
-1. **Export from BigQuery**
+```bash
+python scripts/render_idmap_sql.py
+# → sql/export_aggregated.sql   (40-day bootstrap)
+# → sql/export_incremental.sql  (edit since_date before each run)
+```
 
-   Run [sql/export_jobs.sql](../sql/export_jobs.sql) in the BQ console and download CSV, or:
+## Check current data
 
-   ```bash
-   mkdir -p exports
-   bq query --use_legacy_sql=false --format=csv \
-     < sql/export_jobs.sql > exports/bq-results-$(date +%Y%m%d).csv
-   ```
+```bash
+python build.py --status
+```
 
-2. **Build JSON**
+Shows `last_data_date`, window range, and last merge summary.
 
-   ```bash
-   python build.py \
-     --csv exports/bq-results-YYYYMMDD.csv \
-     --days 90 \
-     --output data.json \
-     --meta meta.json
-   ```
+## First load (40-day bootstrap)
 
-   Review stderr for **unmapped identity** warnings and **anomaly** alerts.
-
-3. **Validate (optional)**
-
-   If you have a previous `data.json` snapshot:
+1. Run your BQ export (aggregated, no query text) → save as `exports/payload.json`
+   - Or use reference `sql/export_aggregated.sql` in the BQ console; download the single `payload` cell as JSON/CSV.
+2. Build:
 
    ```bash
-   python scripts/validate_parity.py --baseline data.json --built data.json.new
+   python build.py --init --from-bq exports/payload.json
    ```
 
-4. **Deploy**
+3. Commit `facts.json`, `data.json`, `meta.json`.
+
+## Incremental refresh (every few days)
+
+1. `python build.py --status` → note `last_data_date`.
+2. Export **new dates only** from BQ (typically day after `last_data_date` through today).
+   - Reference: edit `since_date` in `sql/export_incremental.sql`, run in BQ console.
+3. Merge:
 
    ```bash
-   git add data.json meta.json
-   git commit -m "Refresh BQ usage data"
-   git push origin main
+   python build.py --merge --from-bq exports/payload-YYYYMMDD.json
    ```
 
-   GitHub Pages updates within ~1 minute.
+4. Review stdout:
+   - `Dates added` — new days appended
+   - `Dates overwritten` — same-day re-upload replaced existing data
+5. Commit updated `facts.json`, `data.json`, `meta.json`.
+
+### Re-fix a day
+
+Export that specific date (or range) and `--merge`. Overlapping dates **overwrite** prior facts for those dates.
+
+## Validate (optional)
+
+```bash
+python scripts/validate_parity.py --baseline data.json.bak --built data.json
+```
+
+## Legacy CSV path (debug)
+
+```bash
+python build.py --csv exports/slim-export.csv --days 40
+```
+
+Does not update `facts.json` or support incremental merge.
 
 ## Adding a new analyst
 
-Edit [config/idmap.json](../config/idmap.json):
-
-- Script alias → add under `aliases`
-- Console / Looker email → add under `emails`
-
-Re-run `build.py` and check that unmapped counts are zero.
-
-## Service accounts
-
-New SA buckets go in [config/sa_names.json](../config/sa_names.json).
+Edit [config/idmap.json](../config/idmap.json), re-run `python scripts/render_idmap_sql.py` if using reference SQL, then re-export from BQ.
 
 ## Phase 2 (automated)
 
-When GCP credentials are ready, enable [.github/workflows/refresh-dashboard.yml](../.github/workflows/refresh-dashboard.yml) and add repository secrets:
-
-- `GCP_SA_KEY` — service account JSON with BigQuery job creation + INFORMATION_SCHEMA read
-- `GCP_PROJECT_ID` — e.g. `hitwicketsuperstars`
+When GCP credentials exist, enable [.github/workflows/refresh-dashboard.yml](../.github/workflows/refresh-dashboard.yml).
