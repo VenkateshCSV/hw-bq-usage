@@ -1,16 +1,248 @@
 {
-  "generated_at": "2026-06-27T18:06:50Z",
-  "last_refresh_at": "2026-06-27T18:06:50Z",
-  "last_data_date": "2026-06-22",
-  "window_start": "2026-05-14",
-  "window_end": "2026-06-22",
-  "window_days": 40,
-  "row_count": null,
-  "total_tb": 389.59,
-  "people_count": 33,
+  "window_start": "2026-05-19",
+  "window_end": "2026-06-28",
+  "last_data_date": "2026-06-28",
+  "window_days": 41,
+  "total_tb": 310.03,
+  "people_count": 25,
+  "anomalies": [
+    {
+      "person": "Yashovardhan",
+      "date": "Jun 2",
+      "gb": 27858.0,
+      "median_gb": 1189.9,
+      "ratio": 23.4
+    },
+    {
+      "person": "Sourav",
+      "date": "Jun 18",
+      "gb": 9313.9,
+      "median_gb": 2.2,
+      "ratio": 4139.5
+    },
+    {
+      "person": "Yashovardhan",
+      "date": "Jun 1",
+      "gb": 8819.8,
+      "median_gb": 1189.9,
+      "ratio": 7.4
+    },
+    {
+      "person": "Yashovardhan",
+      "date": "May 21",
+      "gb": 6276.6,
+      "median_gb": 1189.9,
+      "ratio": 5.3
+    },
+    {
+      "person": "Devansh",
+      "date": "Jun 3",
+      "gb": 5516.4,
+      "median_gb": 170.4,
+      "ratio": 32.4
+    },
+    {
+      "person": "Venkatesh",
+      "date": "Jun 4",
+      "gb": 4767.5,
+      "median_gb": 629.6,
+      "ratio": 7.6
+    },
+    {
+      "person": "Venkatesh",
+      "date": "Jun 17",
+      "gb": 3969.6,
+      "median_gb": 629.6,
+      "ratio": 6.3
+    },
+    {
+      "person": "Devanshi",
+      "date": "Jun 15",
+      "gb": 1200.2,
+      "median_gb": 105.6,
+      "ratio": 11.4
+    },
+    {
+      "person": "Tanmay",
+      "date": "May 25",
+      "gb": 885.4,
+      "median_gb": 23.1,
+      "ratio": 38.3
+    },
+    {
+      "person": "Harkeerat",
+      "date": "May 26",
+      "gb": 798.5,
+      "median_gb": 72.7,
+      "ratio": 11.0
+    },
+    {
+      "person": "Devanshi",
+      "date": "Jun 18",
+      "gb": 789.6,
+      "median_gb": 105.6,
+      "ratio": 7.5
+    },
+    {
+      "person": "Mustafa",
+      "date": "Jun 8",
+      "gb": 785.6,
+      "median_gb": 155.2,
+      "ratio": 5.1
+    },
+    {
+      "person": "Devanshi",
+      "date": "Jun 1",
+      "gb": 758.5,
+      "median_gb": 105.6,
+      "ratio": 7.2
+    },
+    {
+      "person": "Harkeerat",
+      "date": "Jun 16",
+      "gb": 552.5,
+      "median_gb": 72.7,
+      "ratio": 7.6
+    },
+    {
+      "person": "Devanshi",
+      "date": "May 23",
+      "gb": 549.1,
+      "median_gb": 105.6,
+      "ratio": 5.2
+    },
+    {
+      "person": "Devanshi",
+      "date": "Jun 17",
+      "gb": 538.3,
+      "median_gb": 105.6,
+      "ratio": 5.1
+    },
+    {
+      "person": "Prasannajeet",
+      "date": "May 27",
+      "gb": 503.7,
+      "median_gb": 24.4,
+      "ratio": 20.6
+    },
+    {
+      "person": "Spoorthi",
+      "date": "Jun 4",
+      "gb": 482.6,
+      "median_gb": 12.7,
+      "ratio": 37.9
+    },
+    {
+      "person": "Harkeerat",
+      "date": "Jun 17",
+      "gb": 480.7,
+      "median_gb": 72.7,
+      "ratio": 6.6
+    },
+    {
+      "person": "Prasannajeet",
+      "date": "Jun 9",
+      "gb": 426.9,
+      "median_gb": 24.4,
+      "ratio": 17.5
+    }
+  ],
+  "source": "job_jsonl",
+  "generated_at": "2026-06-27T20:00:06Z",
+  "last_refresh_at": "2026-06-27T20:00:06Z",
   "unmapped": [],
   "unmapped_total": 0,
-  "anomalies": [],
-  "source_csv": "embedded index.html (migrated)",
-  "note": "Regenerate with build.py when a fresh CSV export is available."
+  "source_payload": "payload.json",
+  "last_merge": {
+    "payload_file": "payload.json",
+    "dates_added": [],
+    "dates_overwritten": [
+      "2026-05-19",
+      "2026-05-20",
+      "2026-05-21",
+      "2026-05-22",
+      "2026-05-23",
+      "2026-05-24",
+      "2026-05-25",
+      "2026-05-26",
+      "2026-05-27",
+      "2026-05-28",
+      "2026-05-29",
+      "2026-05-30",
+      "2026-05-31",
+      "2026-06-01",
+      "2026-06-02",
+      "2026-06-03",
+      "2026-06-04",
+      "2026-06-05",
+      "2026-06-06",
+      "2026-06-07",
+      "2026-06-08",
+      "2026-06-09",
+      "2026-06-10",
+      "2026-06-11",
+      "2026-06-12",
+      "2026-06-13",
+      "2026-06-14",
+      "2026-06-15",
+      "2026-06-16",
+      "2026-06-17",
+      "2026-06-18",
+      "2026-06-19",
+      "2026-06-20",
+      "2026-06-21",
+      "2026-06-22",
+      "2026-06-23",
+      "2026-06-24",
+      "2026-06-25",
+      "2026-06-26",
+      "2026-06-27",
+      "2026-06-28"
+    ],
+    "dates_in_payload": [
+      "2026-05-19",
+      "2026-05-20",
+      "2026-05-21",
+      "2026-05-22",
+      "2026-05-23",
+      "2026-05-24",
+      "2026-05-25",
+      "2026-05-26",
+      "2026-05-27",
+      "2026-05-28",
+      "2026-05-29",
+      "2026-05-30",
+      "2026-05-31",
+      "2026-06-01",
+      "2026-06-02",
+      "2026-06-03",
+      "2026-06-04",
+      "2026-06-05",
+      "2026-06-06",
+      "2026-06-07",
+      "2026-06-08",
+      "2026-06-09",
+      "2026-06-10",
+      "2026-06-11",
+      "2026-06-12",
+      "2026-06-13",
+      "2026-06-14",
+      "2026-06-15",
+      "2026-06-16",
+      "2026-06-17",
+      "2026-06-18",
+      "2026-06-19",
+      "2026-06-20",
+      "2026-06-21",
+      "2026-06-22",
+      "2026-06-23",
+      "2026-06-24",
+      "2026-06-25",
+      "2026-06-26",
+      "2026-06-27",
+      "2026-06-28"
+    ]
+  },
+  "payload_window_start": "2026-05-19",
+  "payload_window_end": "2026-06-28"
 }
