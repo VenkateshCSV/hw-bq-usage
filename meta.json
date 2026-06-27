@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-06-27T18:06:50Z",
+  "window_start": "2026-05-14",
+  "window_end": "2026-06-22",
+  "window_days": 40,
+  "row_count": null,
+  "total_tb": 389.59,
+  "people_count": 33,
+  "unmapped": [],
+  "unmapped_total": 0,
+  "anomalies": [],
+  "source_csv": "embedded index.html (migrated)",
+  "note": "Regenerate with build.py when a fresh CSV export is available."
+}

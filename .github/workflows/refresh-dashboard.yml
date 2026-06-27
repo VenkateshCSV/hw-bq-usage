@@ -1,0 +1,55 @@
+# Phase 2: enable when GCP credentials are available.
+# Start with manual dispatch only; uncomment schedule when secrets are configured.
+
+name: Refresh BQ dashboard
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '30 0 * * *'  # 06:00 IST daily
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      # Uncomment when GCP_SA_KEY and GCP_PROJECT_ID secrets exist:
+      #
+      # - uses: google-github-actions/auth@v2
+      #   with:
+      #     credentials_json: ${{ secrets.GCP_SA_KEY }}
+      #
+      # - uses: google-github-actions/setup-gcloud@v2
+      #
+      # - name: Export BigQuery jobs
+      #   run: |
+      #     mkdir -p exports
+      #     bq query --use_legacy_sql=false --format=csv --project_id=${{ secrets.GCP_PROJECT_ID }} \
+      #       < sql/export_jobs.sql > exports/latest.csv
+      #
+      # - name: Build dashboard data
+      #   run: python build.py --csv exports/latest.csv --days 90
+
+      - name: Build dashboard data (manual CSV placeholder)
+        if: false
+        run: echo "Configure GCP export step above"
+
+      - name: Commit updated data
+        if: false
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data.json meta.json
+          git diff --staged --quiet || git commit -m "Automated BQ usage dashboard refresh"
+          git push

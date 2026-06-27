@@ -1,0 +1,12 @@
+exports/
+*.csv
+.env
+.env.*
+*-credentials.json
+*credentials*.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+baseline_data.json

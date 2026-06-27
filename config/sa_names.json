@@ -1,0 +1,8 @@
+{
+  "bigquery-admin@hitwicketsuperstars.iam.gserviceaccount.com": "SA: bigquery-admin",
+  "firebase-measurement@system.gserviceaccount.com": "SA: firebase-measurement",
+  "reports-sa@hitwicketsuperstars.iam.gserviceaccount.com": "SA: reports-sa",
+  "service-352216829522@gcp-sa-bigquerydatatransfer.iam.gserviceaccount.com": "SA: data-transfer",
+  "352216829522-compute@developer.gserviceaccount.com": "SA: compute",
+  "service-352216829522@gcp-sa-connectedsheets.iam.gserviceaccount.com": "SA: connected-sheets"
+}
